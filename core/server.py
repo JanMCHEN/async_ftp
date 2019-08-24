@@ -15,6 +15,10 @@ async def handle(reader, writer):
 
 
 async def main(ip, port):
+    if not os.path.exists(USER_DIR):
+        os.makedirs(USER_DIR)
+    if not os.path.isfile(LOGFILE):
+        os.makedirs(os.path.dirname(USER_DIR))
     Sql()
     server = await asyncio.start_server(handle, ip, port)
     addr = server.sockets[0].getsockname()
