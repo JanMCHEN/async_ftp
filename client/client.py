@@ -1,7 +1,8 @@
 import asyncio
-import optparse
+import argparse
 import json
 import os
+import getpass
 
 
 def info_pack(do, **kwargs):
@@ -36,6 +37,15 @@ def file_read(file, seek):
             yield chunk
 
 
+def arg_parse():
+    parse = argparse.ArgumentParser(description="This is a client of socket server")
+    parse.add_argument("-H", "--host", default='localhost', help="connect host")
+    parse.add_argument("-P", "--port", default='18888', help="connect port", type=int)
+    parse.add_argument("-u", "--username", dest="username", default=None, help="your username")
+    parse.add_argument("-p", "--password", dest="password", default=None, help="your password")
+    return parse.parse_args()
+
+
 class ClientSocket:
     def __init__(self, file_dir=None):
         self.writer = self.reader = None
@@ -44,35 +54,20 @@ class ClientSocket:
             self.file_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'file')
         if not os.path.isdir(self.file_dir):
             os.mkdir(self.file_dir)
-        op = optparse.OptionParser()
-        op.add_option("-I", "--ip", dest="ip")
-        op.add_option("-P", "--port", dest="port")
-        op.add_option("-u", "--username", dest="username")
-        op.add_option("-p", "--password", dest="password")
-        options, args = op.parse_args()
-        # 程序入口
-        asyncio.run(self.verify_args(options, args))
 
-    async def verify_args(self, opt, args):
+        self.parse = arg_parse()
+        # 程序入口
+        asyncio.run(self.verify_args())
+
+    async def verify_args(self):
         """
         对程序启动时传入的参数作解析
-        :param opt:
-        :param args:
-        :return:
         """
-        if args and args[0] == 'help':
-            help_info()
-            return
-        if not opt.ip:
-            opt.ip = "127.0.0.1"
-        if not opt.port:
-            opt.port = 8888
-        self.reader, self.writer = await asyncio.open_connection(opt.ip, opt.port)
-        if not opt.username:
+        self.reader, self.writer = await asyncio.open_connection(self.parse.host, self.parse.port)
+        if self.parse.username is None:
             ch = input("SignIn or SignUp[I/U]:")
             if ch.upper() == 'I':
-                opt.username = input("Your name:")
-                opt.password = input("Password:")
+                await self.sign_in()
             elif ch.upper() == "U":
                 while True:
                     res = await self.sign_up()
@@ -82,20 +77,20 @@ class ClientSocket:
             else:
                 print("\033[1;31m sorry!\033[0m")
                 return
-        elif not opt.password:
-            opt.password = input("Password:")
-        await self.sign_in(opt.username, opt.password)
+        else:
+            has_pw = self.parse.password if self.parse.password else False
+            await self.sign_in(has_user=True, has_pw=has_pw)
 
     async def sign_up(self):
         """注册"""
-        user = input("input a username:")
-        pw = input("put your code:")
-        if pw == input("make sure your code:"):
-            self.writer.write(info_pack('sign_up', user=user, pwd=pw))
+        self.parse.username = input("Choose your username:")
+        self.parse.password = getpass.getpass("Your password:")
+        if self.parse.password == getpass.getpass("Make sure your password:"):
+            self.writer.write(info_pack('sign_up', user=self.parse.username, pwd=self.parse.password))
             await self.writer.drain()
             data = await self.reader.read(128)
             if data.strip() == b'ok':
-                await self.act(user)
+                await self.act()
                 return
             else:
                 print(data)
@@ -105,19 +100,24 @@ class ClientSocket:
             if input("two different code,again?[Y/N]").upper() == 'Y':
                 return True
 
-    async def sign_in(self, user, pw):
+    async def sign_in(self, has_user=False, has_pw=False):
         """登录"""
-        self.writer.write(info_pack('auth', user=user, pwd=pw))
+        if not has_user:
+            self.parse.username = input("Your username:")
+        if not has_pw:
+            self.parse.password = getpass.getpass("Your password:")
+
+        self.writer.write(info_pack('auth', user=self.parse.username, pwd=self.parse.password))
         await self.writer.drain()
 
         data = await self.reader.read(128)
         if data.strip() == b'ok':
-            await self.act(user)
+            await self.act()
         elif data.strip() == b'out':
             return
         else:
             print(data)
-            await self.sign_in(input("Your name:"), input("Password:"))
+            await self.sign_in()
 
     async def get(self, file, seek, size):
         seek = int(seek)
@@ -130,7 +130,7 @@ class ClientSocket:
                     seek += len(data)
                     progress_bar(seek, size)
                 else:
-                    print('\n\033[1;34m finished \033[0m')
+                    print(f'\n\033[1;34m finished, save at {file} \033[0m')
                     break
 
     async def send(self, file, seek, size):
@@ -145,10 +145,10 @@ class ClientSocket:
         await self.reader.read(1)
         print('\n\033[1;34m finished \033[0m')
 
-    async def act(self, user):
+    async def act(self):
         """用户进入后所有的操作在这里识别发送给服务器并执行相应的操作"""
-        dirs = user
-        print("Welcome to ftp server...{}".format(user))
+        dirs = self.parse.username
+        print("Welcome to ftp server...{}".format(dirs))
         while True:
             cmd = input('\r:' + dirs + '>')
             if cmd == 'help':
@@ -203,9 +203,10 @@ class ClientSocket:
                 path = self.file_dir
                 if len(cmd) == 3:
                     path, file = os.path.split(cmd[-1])
-                    if not os.path.exists(path):
-                        path = self.file_dir
+                    path = os.path.abspath(path)
+                    if not os.path.isdir(path):
                         print(f'\033[1;33m{path} not found,save at default dir \033[0m')
+                        path = self.file_dir
 
                     if not file:
                         file = res.get('file_name')

@@ -132,11 +132,11 @@ class CommandParse(object):
             msg = {'note': 'detail [path]or[file]'}
         return msg
 
-    def upload(self, data):
+    def send(self, data):
         self.file_size = get_size(self.home)
         dirs = ''
         if len(data) == 1:
-            return {'note': 'upload [file] [path]'}
+            return {'note': 'send [file] [path]'}
         elif len(data) == 2:
             dirs = self.path
         elif len(data) == 3:
@@ -147,7 +147,7 @@ class CommandParse(object):
 
         return {'loop': 'post', 'path': dirs, 'size': self.file_size}
 
-    def download(self, data):
+    def get(self, data):
         if len(data) == 3 or len(data) == 2:
             path = os.path.split(data[1])[0]
             if path:
@@ -156,7 +156,7 @@ class CommandParse(object):
             else:
                 dirs = self.path
         else:
-            return {'note': 'download [file] [path]'}
+            return {'note': 'get [file] [path]'}
 
         if not dirs:
             return {'note': 'path not found '}

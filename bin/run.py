@@ -1,11 +1,13 @@
-import os
-import sys
+import asyncio
 
-from ..core import argv_parse
+from ..core import server
 
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 if __name__ == "__main__":
-    argv_parse.ArgvParse()
+    try:
+        asyncio.run(server.main())
+    except KeyboardInterrupt:
+        pass

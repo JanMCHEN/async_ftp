@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 import time
+import argparse
 
 from .command import CommandParse
 from ..conf.settings import *
@@ -14,20 +15,6 @@ async def handle(reader, writer):
     writer.close()
 
 
-async def main(ip, port):
-    if not os.path.exists(USER_DIR):
-        os.makedirs(USER_DIR)
-    if not os.path.isfile(LOGFILE):
-        os.makedirs(os.path.dirname(USER_DIR))
-    Sql()
-    server = await asyncio.start_server(handle, ip, port)
-    addr = server.sockets[0].getsockname()
-    print(f'Serving on {addr}')
-
-    async with server:
-        await server.serve_forever()
-
-
 def save(file, data):
     with open(file, 'ab') as f:
         f.write(data)
@@ -38,6 +25,13 @@ def read(file, seek):
         f.seek(seek)
         for chunk in f:
             yield chunk
+
+
+def arg_parse():
+    parse = argparse.ArgumentParser(description="This is a client of socket server")
+    parse.add_argument("-H", "--host", default=HOST, help="server host")
+    parse.add_argument("-P", "--port", default=PORT, help="server port", type=int)
+    return parse.parse_args()
 
 
 class Server:
@@ -206,3 +200,18 @@ class Server:
             if msg.get('exit'):
                 print(f'{user} out')
                 break
+
+
+async def main():
+    parse = arg_parse()
+    if not os.path.exists(USER_DIR):
+        os.makedirs(USER_DIR)
+    if not os.path.isfile(LOGFILE):
+        os.makedirs(os.path.dirname(USER_DIR))
+    Sql()
+    server = await asyncio.start_server(handle, parse.host, parse.port)
+    addr = server.sockets[0].getsockname()
+    print(f'Serving on {addr}')
+
+    async with server:
+        await server.serve_forever()
