@@ -33,12 +33,49 @@ def save(file, data):
         f.write(data)
 
 
+def read(file, seek):
+    with open(file, 'rb') as f:
+        f.seek(seek)
+        for chunk in f:
+            yield chunk
+
+
 class Server:
     def __init__(self, reader, writer):
         self.times = 0
         self.reader = reader
         self.writer = writer
         self.loop = asyncio.get_running_loop()
+
+    async def _handle(self):
+        addr = self.writer.get_extra_info('peername')
+        print(f'get new client {addr!r}')
+        info = repr(addr) + ' connected at ' + time.asctime(time.localtime(time.time())) + '\n'
+        await self.loop.run_in_executor(None, save, LOGFILE, info.encode())
+
+        while True:
+            data = await self.reader.read(1024)
+            if not data:
+                break
+            try:
+                data = json.loads(data.decode())
+            except json.decoder.JSONDecodeError:
+                print(data)
+                return
+
+            if not hasattr(self, data.get('do').strip('_')):
+                break
+
+            try:
+                ret = await getattr(self, data.get('do').strip('_'))(**data)
+                if ret == 'ok':
+                    await self.act(data.get('user'), code=CODE)
+                    break
+                elif ret == 'out':
+                    print('stop someone')
+                    break
+            except TypeError:
+                break
 
     async def _get(self, msg, data):
         path = msg.pop('path')
@@ -90,36 +127,10 @@ class Server:
         except ValueError:
             return
 
-        res = await self.loop.run_in_executor(None, self._send, file, seek)
+        res = await self.loop.run_in_executor(None, read, file, seek)
         for byte in res:
             self.writer.write(byte)
             await self.writer.drain()
-
-    async def _handle(self):
-        addr = self.writer.get_extra_info('peername')
-        print(f'get new client {addr!r}')
-        info = repr(addr) + ' connected at ' + time.asctime(time.localtime(time.time())) + '\n'
-        await self.loop.run_in_executor(None, save, LOGFILE, info.encode())
-
-        while True:
-            data = await self.reader.read(1024)
-            if not data:
-                break
-
-            data = json.loads(data.decode())
-            if not hasattr(self, data.get('do').strip('_')):
-                break
-
-            try:
-                ret = await getattr(self, data.get('do').strip('_'))(**data)
-                if ret == 'ok':
-                    await self.act(data.get('user'), code=CODE)
-                    break
-                elif ret == 'out':
-                    print('stop someone')
-                    break
-            except TypeError:
-                break
 
     async def auth(self, **kwargs):
         msg = ''
@@ -195,8 +206,3 @@ class Server:
             if msg.get('exit'):
                 print(f'{user} out')
                 break
-
-    def _send(self, file, seek):
-        with open(file, 'rb') as f:
-            f.seek(seek)
-            yield from f.readlines()

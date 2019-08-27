@@ -32,7 +32,8 @@ def help_info(file=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rea
 def file_read(file, seek):
     with open(file, 'rb') as f:
         f.seek(seek)
-        yield from f.readlines()
+        for chunk in f:
+            yield chunk
 
 
 class ClientSocket:
